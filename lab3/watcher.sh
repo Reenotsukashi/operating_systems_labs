@@ -54,6 +54,10 @@ echo "$(date); NOTE: file being tracked: $TRACKED_FILE" >> "$LOGGING_FILE"
 
 (
 	while true; do
+		if [[ ! -p "$FIFO_PATH" ]]; then
+			rm -f "$FIFO_PATH"
+			mkfifo "$FIFO_PATH"
+		fi
 		while read -r line; do
 			if [[ "$line" == "STATUS" ]]; then
 				echo "$(date); STATUS: FIFO, count viewed: $(cat "$COUNT_FILE")" >> "$LOGGING_FILE"
@@ -75,6 +79,7 @@ while read -r line; do
 		COUNT=$(cat "$COUNT_FILE")
 		echo $((COUNT + 1)) > "$COUNT_FILE"
 	elif [[ "$LOGGING_LEVEL" -eq 1 ]]; then
+		:
 	else
 		exit 1
 	fi
