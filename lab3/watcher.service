@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/mnt/d/Admin/'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3/watcher.sh
+ExecStart=/mnt/d/Admin/\'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3/watcher.sh
 User=root
-WorkingDirectory=/mnt/d/Admin/'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3
+WorkingDirectory=/mnt/d/Admin/\'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
