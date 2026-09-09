@@ -1,0 +1,16 @@
+[Unit]
+Description=Process Watcher Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/mnt/d/Admin/\'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3/watcher.sh
+User=root
+WorkingDirectory=/mnt/d/Admin/\'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
