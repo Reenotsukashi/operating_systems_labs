@@ -1,4 +1,4 @@
-0 0 * * * /mnt/d/Admin/\'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3/reporting.sh >> 
-/mnt/d/Admin/\'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3/logs/cron.log 2>&1
-0 2 * * * find /mnt/d/Admin/\'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3/ -name "archive_*.txt" -mtime +7 -delete >> 
-/mnt/d/Admin/\'/Subjects/Semester4/OperatingSystems/labs/operating_systems_labs/lab3/logs/cron.log 2>&1
+0 0 * * * /home/reenes/lab3/reporting.sh >> 
+/home/reenes/lab3/logs/cron.log 2>&1
+0 2 * * * find /home/reenes/lab3/ -name "archive_*.txt" -mtime +7 -delete >> 
+/home/reenes/lab3/logs/cron.log 2>&1
