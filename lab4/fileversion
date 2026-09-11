@@ -1,0 +1,247 @@
+#!/bin/bash
+set -euo pipefail
+
+HIDE_DIR="$HOME/.fileversion"
+
+command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
+
+gen_datetime() {
+	date +"%Y-%m-%d_%H-%M-%S"
+}
+
+gen_timestamp() {
+	date +"%Y-%m-%d %H:%M:%S"
+}
+
+init_check() {
+	local file_dir="$HIDE_DIR/$1"
+	if [[ ! -d "$file_dir" ]]; then
+		echo "Version control is not initialized for $1" >&2
+		exit 1
+	fi
+}
+
+cmd_init() {
+	local file_path="$1"
+
+	if [[ ! -f "$file_path" ]]; then
+		echo "File not found: $file_path" >&2
+		exit 1
+	fi
+
+	local abs_path
+	abs_path="$(cd -- "$(dirname -- "$file_path")" && pwd)/$(basename -- "$file_path")"
+
+	local basename
+	basename="$(basename -- "$file_path")"
+
+	local file_dir="$HIDE_DIR/$basename"
+	if [[ -d "$file_dir" ]]; then
+		echo "Reinitializing version control for $abs_path"
+		rm -rf "$file_dir"
+	fi
+
+	mkdir -p "$file_dir/versions"
+
+	local dt
+	dt="$(gen_datetime)"
+	local ts
+	ts="$(gen_timestamp)"
+	local vname="v1_$dt"
+
+	ln "$abs_path" "$file_dir/versions/$vname"
+	ln -s "versions/$vname" "$file_dir/current_version"
+
+	local inode
+	inode="$(stat -c %i "$abs_path")"
+	local size
+	size="$(stat -c %s "$abs_path")"
+	local hash
+	hash="sha256:$(sha256sum "$abs_path" | awk '{print $1}')"
+
+	jq -n \
+		--arg filename "$abs_path" \
+		--arg basename "$basename" \
+		--arg name "$vname" \
+		--arg timestamp "$ts" \
+		--argjson inode "$inode" \
+		--argjson size "$size" \
+		--arg hash "$hash" \
+		--arg created "$ts" \
+		'{
+			filename: $filename,
+			basename: $basename,
+			versions: [{
+				id: 1,
+				name: $name,
+				timestamp: $timestamp,
+				inode: $inode,
+				size: $size,
+				comment: "Initial version",
+				hash: $hash
+			}],
+			current_version: 1,
+			created: $created,
+			last_updated: $created
+		}' > "$file_dir/metadata.json"
+
+	echo "Version control initialized for $abs_path"
+}
+
+cmd_commit() {
+	local file_path="$1"
+	local comment="${2:-}"
+
+	if [[ ! -f "$file_path" ]]; then
+		echo "File not found: $file_path" >&2
+		exit 1
+	fi
+
+	local basename
+	basename="$(basename -- "$file_path")"
+	init_check "$basename"
+
+	local file_dir="$HIDE_DIR/$basename"
+	local meta="$file_dir/metadata.json"
+
+	local current_inode
+	current_inode="$(stat -c %i "$file_path")"
+
+	local cur_name
+	cur_name="$(readlink "$file_dir/current_version")"
+	cur_name="${cur_name##*/}"
+
+	local stored_inode
+	stored_inode="$(stat -c %i "$file_dir/versions/$cur_name")"
+
+	if [[ "$current_inode" == "$stored_inode" ]]; then
+		echo "No changes"
+		exit 0
+	fi
+
+	local existing
+	existing="$(jq -r --argjson inode "$current_inode" \
+		'.versions[] | select(.inode == $inode) | .name' "$meta" | head -n1)"
+
+	local dt
+	dt="$(gen_datetime)"
+	local ts
+	ts="$(gen_timestamp)"
+
+	local new_name
+	if [[ -n "$existing" ]]; then
+		new_name="$existing"
+	else
+		local next_id
+		next_id="$(jq -r '.versions | length + 1' "$meta")"
+		new_name="v${next_id}_$dt"
+		ln "$file_path" "$file_dir/versions/$new_name"
+	fi
+
+	ln -sfn "versions/$new_name" "$file_dir/current_version"
+
+	local inode
+	inode="$(stat -c %i "$file_path")"
+	local size
+	size="$(stat -c %s "$file_path")"
+	local hash
+	hash="sha256:$(sha256sum "$file_path" | awk '{print $1}')"
+
+	if [[ -n "$existing" ]]; then
+		echo "Version already exists: $new_name"
+	else
+		local next_id
+		next_id="$(jq -r '.versions | length + 1' "$meta")"
+		jq \
+			--arg name "$new_name" \
+			--arg timestamp "$ts" \
+			--argjson inode "$inode" \
+			--argjson size "$size" \
+			--arg hash "$hash" \
+			--arg comment "$comment" \
+			--argjson id "$next_id" \
+			--arg last_updated "$ts" \
+			'.versions += [{
+				id: $id,
+				name: $name,
+				timestamp: $timestamp,
+				inode: $inode,
+				size: $size,
+				comment: $comment,
+				hash: $hash
+			}] | .current_version = $id | .last_updated = $last_updated' \
+			"$meta" > "$meta.tmp" && mv "$meta.tmp" "$meta"
+		echo "Committed version $next_id: $comment"
+	fi
+}
+
+cmd_restore() {
+	local file_path="$1"
+	local version="$2"
+
+	if [[ ! -f "$file_path" ]]; then
+		echo "File not found: $file_path" >&2
+		exit 1
+	fi
+
+	local basename
+	basename="$(basename -- "$file_path")"
+	init_check "$basename"
+
+	local file_dir="$HIDE_DIR/$basename"
+	local meta="$file_dir/metadata.json"
+
+	if [[ "$version" == "latest" ]]; then
+		version="$(jq -r '.current_version' "$meta")"
+	fi
+
+	local vname
+	vname="$(jq -r --argjson id "$version" \
+		'.versions[] | select(.id == $id) | .name' "$meta" | head -n1)"
+
+	if [[ -z "$vname" ]]; then
+		echo "Version $version not found" >&2
+		exit 1
+	fi
+
+	rm -f "$file_path"
+	ln "$file_dir/versions/$vname" "$file_path"
+
+	ln -sfn "versions/$vname" "$file_dir/current_version"
+
+	local ts
+	ts="$(gen_timestamp)"
+	jq --argjson id "$version" --arg last_updated "$ts" \
+		'.current_version = $id | .last_updated = $last_updated' \
+		"$meta" > "$meta.tmp" && mv "$meta.tmp" "$meta"
+
+	echo "Checked out version $version to $file_path"
+}
+
+if [[ $# -lt 2 ]]; then
+	echo "Usage: $0 {init|commit|restore} <file> [comment|version]" >&2
+	exit 1
+fi
+
+cmd="$1"
+file="$2"
+
+case "$cmd" in
+	init)
+		cmd_init "$file"
+		;;
+	commit)
+		cmd_commit "$file" "${3:-}"
+		;;
+	restore)
+		if [[ $# -lt 3 ]]; then
+			echo "Usage: $0 restore <file> <version|latest>" >&2
+			exit 1
+		fi
+		cmd_restore "$file" "$3"
+		;;
+	*)
+		echo "Unknown command: $cmd" >&2
+		exit 1
+		;;
+esac
