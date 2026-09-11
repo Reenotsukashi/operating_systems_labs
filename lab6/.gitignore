@@ -1,0 +1,5 @@
+.venv/
+logs/
+mnt/
+original_dir/
+__pycache__/

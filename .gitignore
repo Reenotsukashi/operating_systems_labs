@@ -2,3 +2,9 @@
 
 /lab5/logs/
 /lab5/reports/
+
+.venv/
+logs/
+mnt/
+original_dir/
+__pycache__/
